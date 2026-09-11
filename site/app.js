@@ -159,8 +159,13 @@
       if (!$("prompt").dataset.busy) prompt(account ? `connected ${short(account)} · rpc ok` : "rpc ok · not connected");
     } catch (e) {
       console.error(e);
-      $("statusbar").textContent = " RPC UNREACHABLE";
-      prompt("rpc unreachable · " + (e.shortMessage || e.message), true);
+      if (e && (e.code === "BAD_DATA" || e.code === "CALL_EXCEPTION")) {
+        $("statusbar").textContent = " CONTRACTS NOT DEPLOYED · launch pending";
+        prompt("rpc ok · contracts not deployed on this chain yet", true);
+      } else {
+        $("statusbar").textContent = " RPC UNREACHABLE";
+        prompt("rpc unreachable · " + (e.shortMessage || e.message), true);
+      }
     }
   }
 
@@ -269,8 +274,25 @@
   $("stakeMax").onclick = () => { $("stakeAmt").value = $("stakeMax").dataset.max || ""; };
   $("bondAmt").oninput = quoteBond;
 
+  const ZERO = "0x0000000000000000000000000000000000000000";
+  const disableActions = (on) => ["bondBtn", "stakeBtn", "unstakeBtn", "claimBtn", "harvestBtn", "pokeBtn", "settleBtn"].forEach((id) => { $(id).disabled = on; });
+  async function preflight() {
+    // 1. is the rpc alive?  2. is there code at the engine address?
+    let block;
+    try { block = await provider.getBlockNumber(); }
+    catch (e) { $("statusbar").textContent = " RPC UNREACHABLE"; prompt("rpc unreachable · " + (e.shortMessage || e.message), true); return false; }
+    if (!C.engine || C.engine === ZERO || (await provider.getCode(C.engine)) === "0x") {
+      $("statusbar").textContent = ` ${C.chainName.toUpperCase()} · block ${block.toLocaleString(loc)} · CONTRACTS NOT DEPLOYED · launch pending`;
+      prompt(`rpc ok · block ${block.toLocaleString(loc)} · contracts not deployed yet`);
+      disableActions(true);
+      return false;
+    }
+    return true;
+  }
+
   (async () => {
     $("chainLabel").textContent = `· ${C.chainName.toLowerCase()} · chain ${C.chainId}`;
+    if (!(await preflight())) { setInterval(async () => { if (await preflight()) location.reload(); }, 60000); return; }
     try {
       const tokenAddr = await engineR.token();
       tokenR = new ethers.Contract(tokenAddr, ERC20_ABI, provider);
