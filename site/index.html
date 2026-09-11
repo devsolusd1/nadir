@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NADIR</title>
+<meta name="description" content="NADIR — a bond and stake engine for a Pons-launched token on Robinhood Chain. Creator fees are split in code; stakers earn ETH; bonds pay a bonus below the moving target." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ccircle cx='16' cy='16' r='12' fill='%2355ff55'/%3E%3Ccircle cx='21' cy='13' r='10' fill='%23000'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="term">
+
+  <header class="hdr">
+    <pre class="art rain" id="rain" aria-hidden="true"></pre>
+    <pre class="art moon c" id="moon" aria-hidden="true"></pre>
+    <pre class="art logo c" id="logo" aria-label="NADIR"></pre>
+    <div class="tag c">bond the bottom · earn ETH for holding · nothing is minted</div>
+    <pre class="art ground" id="ground" aria-hidden="true"></pre>
+  </header>
+
+  <nav class="abar" id="abar"></nav>
+
+  <div class="status" id="statusbar"> EPOCH —  ·  loading</div>
+  <div class="prompt" id="prompt">&gt; connecting to rpc<span class="cur">█</span></div>
+
+  <section id="dashboard">
+    <div class="ttl">DASHBOARD <small id="chainLabel"></small></div>
+    <div class="cols">
+      <div>
+        <div class="kv"><span>discount to target</span><span class="dots"></span><b class="y"><span id="discount">—</span>%</b></div>
+        <div class="kv"><span>bond bonus now</span><span class="dots"></span><b><span id="bonus">—</span>%</b></div>
+        <div class="spark" id="spark"></div>
+        <div class="axis"><span id="sparkNote">price history, ETH per 1M tokens</span><span>target = <span class="yellow">─</span></span></div>
+        <div class="kv" style="margin-top:8px"><span>spot</span><span class="dots"></span><b id="spot">—</b></div>
+        <div class="kv"><span>target (<span id="window">—</span>-sample mean)</span><span class="dots"></span><b id="target">—</b></div>
+        <div class="kv"><span>epoch</span><span class="dots"></span><b id="epoch">—</b></div>
+        <div class="kv"><span>next poke</span><span class="dots"></span><b id="nextPoke">—</b></div>
+        <div class="kv"><span>samples</span><span class="dots"></span><b id="samples">—</b></div>
+      </div>
+      <div>
+        <div class="kv"><span>ETH reserve</span><span class="dots"></span><b id="ethReserve">—</b></div>
+        <div class="kv"><span>crypt</span><span class="dots"></span><b id="crypt">—</b></div>
+        <div class="kv"><span>bonds owed</span><span class="dots"></span><b id="outstanding">—</b></div>
+        <div class="kv"><span>total staked</span><span class="dots"></span><b id="totalStaked">—</b></div>
+        <div class="kv"><span>burned</span><span class="dots"></span><b id="burned">—</b></div>
+        <div class="kv"><span>bought back</span><span class="dots"></span><b id="boughtBack">—</b></div>
+        <div class="kv" style="margin-top:14px"><span>fees unclaimed on pons</span><span class="dots"></span><b id="pending">—</b></div>
+        <div class="kv"><span>fees harvested</span><span class="dots"></span><b id="harvested">—</b></div>
+        <div class="kv"><span>to treasury (<span id="treasuryBps">—</span>%)</span><span class="dots"></span><b id="toTreasury">—</b></div>
+        <div class="kv"><span>to protocol</span><span class="dots"></span><b id="toProtocol">—</b></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cols">
+    <div class="panel" id="bond">
+      <div class="ttl">BOND</div>
+      <p>Deposit below target. After <span class="bright" id="vest">—</span> epochs you receive principal + the bonus locked at entry. <span class="bright" id="entryBurn">—</span>% of the entry is burned. Leaving early returns principal minus <span class="bright" id="penalty">—</span>%.</p>
+      <form id="bondForm">
+        <div class="line"><label>&gt; amount</label><input class="field" id="bondAmt" placeholder="0" inputmode="decimal" autocomplete="off" /><span id="bondUnit">TOKEN</span><button type="button" class="max" id="bondMax">(max)</button></div>
+        <div class="kv"><span>you receive</span><span class="dots"></span><b id="bondQuote">—</b></div>
+        <div class="line"><button type="submit" class="tbtn primary" id="bondBtn">BOND</button></div>
+      </form>
+      <table class="tt" id="myBondsTable" hidden>
+        <thead><tr><th>#</th><th>in</th><th>out</th><th>status</th><th></th></tr></thead>
+        <tbody id="myBonds"></tbody>
+      </table>
+      <div class="help" id="bondHelp"></div>
+    </div>
+    <div class="panel" id="stake">
+      <div class="ttl">STAKE</div>
+      <p><span class="bright" id="stakingShare">—</span>% of the ETH that reaches the protocol goes to stakers, pro-rata. No lock, no penalty.</p>
+      <div class="kv"><span>staked</span><span class="dots"></span><b id="myStake">—</b></div>
+      <div class="kv"><span>ETH to claim</span><span class="dots"></span><b id="myEarned">—</b></div>
+      <form id="stakeForm">
+        <div class="line"><label>&gt; amount</label><input class="field" id="stakeAmt" placeholder="0" inputmode="decimal" autocomplete="off" /><span id="stakeUnit">TOKEN</span><button type="button" class="max" id="stakeMax">(max)</button></div>
+        <div class="line">
+          <button type="submit" class="tbtn primary" id="stakeBtn">STAKE</button>
+          <button type="button" class="tbtn" id="unstakeBtn">UNSTAKE</button>
+          <button type="button" class="tbtn" id="claimBtn">CLAIM ETH</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section id="nfo">
+    <div class="ttl">NFO</div>
+    <div class="cols">
+      <div>
+        <p><span class="bright">oracle.</span> one price sample per epoch from the uniswap v4 stateview. target = mean of the last samples. nothing off-chain, nothing signed.</p>
+        <p><span class="bright">flywheel.</span> pons fees → ETH in the engine → half to stakers, half to buybacks → tokens into the crypt → bonds paid. every step is a public function.</p>
+      </div>
+      <div>
+        <p><span class="bright">safety.</span> immutable addresses and pool. the guardian can only pause <i>new entries</i> for up to 7 days and propose parameters that execute 48h later. withdrawals never pause. no admin keys over user funds.</p>
+        <p><a href="docs.html">&gt; read the full docs</a></p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="ttl">MAINTENANCE <small>anyone can run these</small></div>
+    <p>once per epoch <span class="green">poke()</span> records the price and buys back with 10% of the reserve; the caller gets a tip. <span class="green">harvest()</span> moves fees from pons into the split. <span class="green">settle()</span> pays matured bonds in order.</p>
+    <div class="line">
+      <button class="tbtn" id="pokeBtn">POKE</button>
+      <button class="tbtn" id="harvestBtn">HARVEST</button>
+      <button class="tbtn" id="settleBtn">SETTLE</button>
+      <span class="dim">last sample <span id="lastSample">—</span> · tip <span id="tip">—</span></span>
+    </div>
+  </section>
+
+  <div class="marquee"><span>NADIR · NOTHING IS MINTED · NO ADMIN KEYS · FEES SPLIT IN CODE · BUYBACK EVERY EPOCH · STAKERS PAID IN ETH · BOND THE BOTTOM · NADIR · NOTHING IS MINTED · NO ADMIN KEYS · FEES SPLIT IN CODE · BUYBACK EVERY EPOCH · STAKERS PAID IN ETH · BOND THE BOTTOM · </span></div>
+
+  <footer>
+    <div id="addrs"></div>
+    <div>robinhood chain · fees from pons v2 · liquidity on uniswap v4 · <a href="docs.html#risks">risks</a></div>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script src="config.js"></script>
+<script src="config.local.js"></script>
+<script src="ascii.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

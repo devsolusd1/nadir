@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NADIR · NFO</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2355ff55'/%3E%3Ccircle cx='22' cy='12' r='12' fill='%23000'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="term">
+<header class="hdr">
+  <pre class="art moon c" id="moon" aria-hidden="true"></pre>
+  <pre class="art logo c" id="logo" aria-label="NADIR"></pre>
+  <div class="tag c">nfo · how it works · what can and cannot happen</div>
+  <pre class="art ground" id="ground" aria-hidden="true"></pre>
+</header>
+<nav class="abar" id="abar"></nav>
+<div class="toc">
+    
+    <a href="#overview">Overview</a>
+    <a href="#lifecycle">Lifecycle</a>
+    
+    <a href="#fees">Fee split</a>
+    <a href="#oracle">Oracle &amp; target</a>
+    <a href="#bonds">Bonds</a>
+    <a href="#buybacks">Buybacks</a>
+    <a href="#staking">Staking</a>
+    <a href="#keepers">Keepers</a>
+    
+    <a href="#params">Parameters</a>
+    <a href="#security">Security &amp; governance</a>
+    <a href="#risks">Risks</a>
+    <a href="#contracts">Contracts</a>
+    <a href="#faq">FAQ</a>
+  </div>
+
+  <article class="doc">
+    <h1>DOCUMENTATION</h1>
+    <p>Nadir is a two-contract protocol layer attached to a fixed-supply token launched on <b>Pons v2</b> (Robinhood Chain) and trading on <b>Uniswap v4</b>. It turns the token's creator fees into ETH yield for stakers and into buybacks that pay out bonds.</p>
+
+    <h2 id="overview">Overview</h2>
+    <svg class="flow" viewBox="0 0 900 250" xmlns="http://www.w3.org/2000/svg" font-family="Cascadia Mono, Consolas, monospace" font-size="12">
+      <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#aaaaaa"/></marker></defs>
+      <g stroke="#aaaaaa" stroke-width="1.2" fill="none" marker-end="url(#a)">
+        <path d="M170,60 L250,60"/><path d="M400,60 L470,60"/><path d="M400,60 L470,150"/>
+        <path d="M620,150 L700,110"/><path d="M620,150 L700,190"/>
+      </g>
+      <g fill="#000" stroke="#555555">
+        <rect x="20" y="35" width="150" height="50" rx="10"/><rect x="250" y="35" width="150" height="50" rx="10"/>
+        <rect x="470" y="35" width="150" height="50" rx="10"/><rect x="470" y="125" width="150" height="50" rx="10"/>
+        <rect x="700" y="85" width="180" height="50" rx="10"/><rect x="700" y="165" width="180" height="50" rx="10"/>
+      </g>
+      <g fill="#ffffff" text-anchor="middle">
+        <text x="95" y="56">Pons trades</text><text x="95" y="72" fill="#aaaaaa">creator fee in ETH</text>
+        <text x="325" y="56">FeeSplitter</text><text x="325" y="72" fill="#aaaaaa">harvest()</text>
+        <text x="545" y="56">Treasury</text><text x="545" y="72" fill="#aaaaaa">fixed share</text>
+        <text x="545" y="146">BondEngine</text><text x="545" y="162" fill="#aaaaaa">protocol share</text>
+        <text x="790" y="106">Stakers</text><text x="790" y="122" fill="#aaaaaa">ETH rewards</text>
+        <text x="790" y="186">Buyback → crypt</text><text x="790" y="202" fill="#aaaaaa">pays bonds</text>
+      </g>
+    </svg>
+    <ul>
+      <li><b>FeeSplitter</b> is the token's <code>creatorFeeRecipient</code> on Pons. Anyone can call <code>harvest()</code>; it claims the accrued ETH and splits it between the treasury and the engine using a share fixed at deploy.</li>
+      <li><b>BondEngine</b> receives the protocol share. Part is streamed to stakers as ETH, part is held as a reserve that buys the token back on Uniswap v4 every epoch. Bought tokens go to the <i>crypt</i>, which pays bonds.</li>
+      <li><b>Bonds</b> let holders deposit the token when it trades below its moving target and receive a bonus after vesting. The deeper the discount, the larger the bonus.</li>
+    </ul>
+
+    <h2 id="lifecycle">Lifecycle</h2>
+    <ol>
+      <li><b>Deploy FeeSplitter</b> with the treasury address and share.</li>
+      <li><b>Launch on Pons</b> with <code>creatorFeeRecipient = FeeSplitter</code> and the chosen <code>creatorTaxBps</code>. Both the tax and the fact that fees route through the splitter are visible on-chain from block one.</li>
+      <li><b>Deploy BondEngine</b> with the token address. The v4 pool id is derived on-chain from the Pons pool key. The deployer wires <code>FeeSplitter.setProtocol(engine)</code> exactly once.</li>
+      <li><b>Curve phase.</b> While the token is on the Pons bonding curve, fees accrue in the escrow and can already be harvested. The engine waits: <code>start()</code> only succeeds once the v4 pool exists.</li>
+      <li><b>Graduation.</b> Pons migrates liquidity to Uniswap v4. Anyone calls <code>start()</code>, the first price sample is taken, and epochs begin.</li>
+      <li><b>Steady state.</b> Every epoch a keeper calls <code>poke()</code>. Stakers accrue ETH, buybacks fill the crypt, bonds mature and are settled in order.</li>
+    </ol>
+
+    <h2 id="fees">Fee split</h2>
+    <p>Pons charges a base fee on every trade (currently 1%, of which 70% goes to the creator) plus an optional <b>creator tax</b> chosen at launch and immutable afterwards. All creator proceeds are credited in ETH to the recipient's balance in the Pons <code>FeeEscrow</code>.</p>
+    <table>
+      <tr><th>Destination</th><th>Share</th><th>Mechanism</th></tr>
+      <tr><td>Treasury</td><td><span id="tBps">treasuryBps</span> of every harvest</td><td>Constant in FeeSplitter. Cannot be changed, cannot be paused.</td></tr>
+      <tr><td>Stakers</td><td><code>stakingShareBps</code> of the protocol share</td><td>Added to a per-share accumulator the moment ETH arrives; claimable any time.</td></tr>
+      <tr><td>Buyback reserve</td><td>the rest</td><td><code>releaseBps</code> of the reserve is swapped for the token every epoch and locked in the crypt.</td></tr>
+    </table>
+    <div class="callout">If nobody is staking when ETH arrives, the staker share is not lost: it falls through to the buyback reserve.</div>
+
+    <h2 id="oracle">Oracle &amp; target</h2>
+    <p>The engine reads <code>sqrtPriceX96</code> from the Uniswap v4 <code>StateView</code> for the exact pool key Pons created (currency0 = ETH, currency1 = token, fee 0, tick spacing 200, hook = Pons MemeHook). The value is stored as <i>tokens per ETH</i> once per epoch, in a ring buffer of up to 168 samples (7 days at 1-hour epochs).</p>
+    <p><b>Target</b> is the arithmetic mean of the last <code>window</code> samples. <b>Discount</b> is how far the current spot is below the target: <code>discount = (spotTPE − targetTPE) / spotTPE</code>, where a higher tokens-per-ETH means a cheaper token. When spot is at or above target the discount is zero and bonds are closed.</p>
+    <div class="callout warn">A spot price can be moved inside a block. The target cannot: it needs <code>window</code> epochs of sustained price to move. Bonuses are computed against the target, not against the last trade.</div>
+
+    <h2 id="bonds">Bonds</h2>
+    <p><code>bond(amount, minBonusBps)</code> is available when the engine has at least <code>minSamples</code> samples, entries are not paused, and the discount is above zero.</p>
+    <ol>
+      <li><code>entryBurnBps</code> of the amount is sent to the dead address.</li>
+      <li>The remainder is the <b>principal</b> and goes to the crypt.</li>
+      <li>The <b>payout</b> is <code>principal × (1 + bonus)</code>, where <code>bonus = maxBonusBps × min(discount, bandBps) / bandBps</code>.</li>
+      <li>The bond matures after <code>vestEpochs</code> epochs.</li>
+    </ol>
+    <p>Bonds are paid strictly <b>first-in, first-out</b> by <code>settle(n)</code>, which anyone can call. A bond is paid when it has matured and the crypt holds at least its payout. If the crypt is short, the queue waits for the next buybacks; nothing is paid out of order.</p>
+    <p><code>exit(id)</code> cancels an unsettled bond at any time: the owner gets the principal minus <code>penaltyBps</code>, and the penalty stays in the crypt for the other bondholders.</p>
+    <div class="callout">Because payouts exceed principal, the crypt depends on inflows: buybacks funded by fees, entry penalties, and new principal. This is the same structure as coupon and bond systems in algorithmic protocols, and it is the risk described under <a href="#risks">Risks</a>.</div>
+
+    <h2 id="buybacks">Buybacks</h2>
+    <p>On every <code>poke()</code> the engine takes <code>releaseBps</code> of its ETH reserve and swaps it for the token directly on the Uniswap v4 <code>PoolManager</code> (unlock → exact-input swap → settle ETH → take tokens). The Pons hook applies its normal fees to that swap, exactly as it would for any trader. Tokens received are added to the crypt and counted in <code>totalBoughtBack</code>.</p>
+    <p>Releasing a fixed fraction per epoch makes the buyback a predictable, continuous bid that cannot be front-run for size: the amount is public before the epoch ends.</p>
+
+    <h2 id="staking">Staking</h2>
+    <p><code>stake(amount)</code> deposits the token; <code>unstake(amount)</code> withdraws it at any time. Rewards are ETH, tracked with a per-share accumulator. <code>earned(user)</code> shows what is claimable, and <code>claimRewards()</code> sends it. Staking never pauses withdrawals: only new deposits can be paused by the guardian.</p>
+
+    <h2 id="keepers">Keepers</h2>
+    <p>Three functions keep the protocol moving and all of them are permissionless:</p>
+    <table>
+      <tr><th>Function</th><th>When</th><th>Incentive</th></tr>
+      <tr><td>FeeSplitter.harvest()</td><td>whenever the escrow shows a balance</td><td>none needed; gas is negligible on Robinhood Chain</td></tr>
+      <tr><td>BondEngine.poke()</td><td>once per epoch</td><td>caller receives <code>TIP_BPS</code> of the reserve, capped at <code>TIP_CAP</code></td></tr>
+      <tr><td>BondEngine.settle(n)</td><td>after bonds mature</td><td>none; bondholders will call it</td></tr>
+    </table>
+    <pre><code># reference keeper (Hardhat project)
+ENGINE=0x… SPLITTER=0x… LOOP=1 npx hardhat run scripts/3-start-and-poke.js --network robinhood</code></pre>
+
+    <h2 id="params">Parameters</h2>
+    <table>
+      <tr><th>Name</th><th>Default</th><th>Meaning</th></tr>
+      <tr><td>epochLength</td><td>3600 s</td><td>one sample and one buyback per hour (immutable)</td></tr>
+      <tr><td>window</td><td>24</td><td>target = mean of the last 24 samples</td></tr>
+      <tr><td>minSamples</td><td>6</td><td>bonds open 6 epochs after start()</td></tr>
+      <tr><td>maxBonusBps</td><td>5000</td><td>+50% payout at the full discount band</td></tr>
+      <tr><td>bandBps</td><td>5000</td><td>full bonus reached at 50% below target</td></tr>
+      <tr><td>entryBurnBps</td><td>100</td><td>1% of each bond entry burned</td></tr>
+      <tr><td>vestEpochs</td><td>24</td><td>bonds mature after 24 epochs</td></tr>
+      <tr><td>penaltyBps</td><td>2000</td><td>early exit returns principal minus 20%</td></tr>
+      <tr><td>releaseBps</td><td>1000</td><td>10% of the ETH reserve bought back per epoch</td></tr>
+      <tr><td>stakingShareBps</td><td>5000</td><td>half of incoming ETH to stakers, half to the reserve</td></tr>
+    </table>
+    <p>Changing any parameter requires <code>proposeParams()</code> by the guardian followed by a public <code>executeParams()</code> at least 48 hours later. Bounds are enforced on-chain (for example, entry burn ≤ 10%, penalty ≤ 50%).</p>
+
+    <h2 id="security">Security &amp; governance</h2>
+    <table>
+      <tr><th>Actor</th><th>Can</th><th>Cannot</th></tr>
+      <tr><td>Guardian</td><td>pause <b>new</b> bonds and stakes for ≤ 7 days per call; propose parameters with a 48h delay</td><td>move any token or ETH, block unstake / exit / settle / claims / poke, change addresses or the pool</td></tr>
+      <tr><td>FeeSplitter deployer</td><td>set the protocol address once</td><td>change shares, withdraw, set it twice</td></tr>
+      <tr><td>Anyone</td><td>harvest, poke, settle, start, executeParams after the delay</td><td>—</td></tr>
+    </table>
+    <ul>
+      <li>No proxy, no upgrade path. The bytecode you verify is the bytecode that runs forever.</li>
+      <li>The token itself is the unmodified Pons launcher token: fixed supply, no tax logic, no owner.</li>
+      <li>Reentrancy guards on every state-changing entry point; ETH is only sent via <code>call</code> after state updates.</li>
+    </ul>
+
+    <h2 id="risks">Risks</h2>
+    <ul>
+      <li><b>Bond queue risk.</b> Bond payouts exceed principal. If fee inflows stop and no new bonds are opened, the queue can stall with matured bonds unpaid. <code>exit()</code> is always available at the penalty, subject to crypt liquidity.</li>
+      <li><b>Price risk.</b> Buybacks buy a volatile token. The crypt's ETH value can fall faster than it is refilled.</li>
+      <li><b>Oracle risk.</b> The target is a simple moving average of on-chain spot samples. A sustained manipulation over many epochs would move it.</li>
+      <li><b>Smart-contract risk.</b> The code is tested (unit and mainnet-fork) but not audited at the time of writing.</li>
+      <li><b>Platform risk.</b> Fee accrual depends on the Pons escrow and hook contracts, which are outside this protocol's control.</li>
+    </ul>
+
+    <h2 id="contracts">Contracts</h2>
+    <table>
+      <tr><th>Contract</th><th>Address</th></tr>
+      <tr><td>BondEngine</td><td id="cEngine">see config</td></tr>
+      <tr><td>FeeSplitter</td><td id="cSplitter">see config</td></tr>
+      <tr><td>Token</td><td id="cToken">see config</td></tr>
+      <tr><td>Pons FeeEscrow</td><td>0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e</td></tr>
+      <tr><td>Pons MemeHook</td><td>0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044</td></tr>
+      <tr><td>Uniswap v4 PoolManager</td><td>0x8366a39cc670b4001a1121b8f6a443a643e40951</td></tr>
+      <tr><td>Uniswap v4 StateView</td><td>0xf3334192d15450cdd385c8b70e03f9a6bd9e673b</td></tr>
+    </table>
+
+    <h2 id="faq">FAQ</h2>
+    <h3>Why are rewards paid in ETH and not in the token?</h3>
+    <p>Because the fees arrive in ETH and because a reward that does not come from printing the token is the only kind that does not dilute holders.</p>
+    <h3>Who decides when to pause?</h3>
+    <p>The guardian address, and only for new entries. Anyone can always withdraw. A pause expires by itself after at most 7 days unless renewed.</p>
+    <h3>Can the creator tax change?</h3>
+    <p>No. It is set once in the Pons launch transaction and is immutable. The fee recipient can only be changed through the Pons factory with a 3-day timelock, which is public.</p>
+    <h3>What happens to fees before graduation?</h3>
+    <p>They accrue in the escrow and can be harvested at any time. The engine holds the protocol share as reserve until the pool exists, then starts buying back.</p>
+  </article>
+</div>
+
+<div class="marquee"><span>NADIR · NOTHING IS MINTED · NO ADMIN KEYS · FEES SPLIT IN CODE · BUYBACK EVERY EPOCH · STAKERS PAID IN ETH · BOND THE BOTTOM · NADIR · NOTHING IS MINTED · NO ADMIN KEYS · FEES SPLIT IN CODE · </span></div>
+<footer><div>robinhood chain · fees from pons v2 · liquidity on uniswap v4 · <a href="./">back to the terminal</a></div></footer>
+</div>
+
+<script src="config.js"></script>
+<script src="config.local.js"></script>
+<script src="ascii.js"></script>
+<script>(function(){var A=window.ASCII,C=window.BOND_CONFIG||{};document.getElementById("logo").textContent=A.logo(C.name||"NADIR");document.getElementById("moon").innerHTML=A.moonHTML;A.favicon();document.getElementById("ground").textContent=A.ground(120);var bar=document.getElementById("abar");[["TERMINAL","./"],["STAKE","./#stake"],["BOND","./#bond"],["DASHBOARD","./#dashboard"]].forEach(function(b){var a=document.createElement("a");a.className="abtn";a.href=b[1];a.innerHTML="<pre>"+A.button(b[0])+"</pre>";bar.appendChild(a);});})();</script>
+<script>
+  (function () {
+    var C = window.BOND_CONFIG || {};
+    var link = function (a) { return a && a !== "0x0000000000000000000000000000000000000000" ? '<a href="' + C.explorer + '/address/' + a + '" target="_blank" rel="noopener">' + a + '</a>' : 'not deployed yet'; };
+    document.getElementById("cEngine").innerHTML = link(C.engine);
+    document.getElementById("cSplitter").innerHTML = link(C.splitter);
+    document.getElementById("cToken").innerHTML = link(C.token);
+    document.getElementById("tBps").textContent = (C.treasuryBps ? C.treasuryBps / 100 + "%" : "the treasury share");
+  })();
+</script>
+</body>
+</html>
