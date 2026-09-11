@@ -60,7 +60,8 @@
   ];
 
   const $ = (id) => document.getElementById(id);
-  const provider = new ethers.JsonRpcProvider(C.rpc, C.chainId);
+  const provider = window.RPC.makeProvider(ethers, C);
+  const mcall = (calls) => window.RPC.multicall(ethers, provider, C.multicall, calls);
   const engineR = new ethers.Contract(C.engine, ENGINE_ABI, provider);
   const splitterR = new ethers.Contract(C.splitter, SPLITTER_ABI, provider);
   let tokenR = new ethers.Contract(C.token, ERC20_ABI, provider);
@@ -95,11 +96,11 @@
   // ---------------------------------------------------------------- chart (ascii sparkline)
   async function refreshChart() {
     try {
-      const [cursor, count, target, spot] = await Promise.all([engineR.sampleCursor(), engineR.sampleCount(), engineR.getFunction("target")(), engineR.spot()]);
+      const [cursor, count, target, spot] = await mcall([{ c: engineR, f: "sampleCursor" }, { c: engineR, f: "sampleCount" }, { c: engineR, f: "target" }, { c: engineR, f: "spot" }]);
       const n = Math.min(Number(count), 60);
       if (n === 0) return;
       const idx = []; for (let i = n; i >= 1; i--) idx.push(Number(cursor) - i);
-      const samples = await Promise.all(idx.map((i) => engineR.sampleAt(i)));
+      const samples = await mcall(idx.map((i) => ({ c: engineR, f: "sampleAt", a: [i] })));
       const toPrice = (q) => (q > 0n ? 1e6 / fromQ96(q) : 0);
       const vals = samples.map(toPrice); if (spot > 0n) vals.push(toPrice(spot));
       $("spark").innerHTML = A.spark(vals, target > 0n ? toPrice(target) : null);
@@ -110,10 +111,12 @@
   // ---------------------------------------------------------------- stats
   async function refresh() {
     try {
-      const [started, epoch, epochLength, lastSampleAt, sampleCount, spot, target, discount, bonus, paused, ethReserve, crypt, totalStaked, burned, boughtBack, outstanding, p, tipBps, tipCap] = await Promise.all([
-        engineR.started(), engineR.epoch(), engineR.epochLength(), engineR.lastSampleAt(), engineR.sampleCount(), engineR.spot(), engineR.getFunction("target")(),
-        engineR.discountBps(), engineR.bonusBps(), engineR.isPaused(), engineR.ethReserve(), engineR.crypt(), engineR.totalStaked(), engineR.totalBurned(),
-        engineR.totalBoughtBack(), engineR.bondedOutstanding(), engineR.params(), engineR.TIP_BPS(), engineR.TIP_CAP(),
+      const E = (f) => ({ c: engineR, f }), S = (f) => ({ c: splitterR, f });
+      const [started, epoch, epochLength, lastSampleAt, sampleCount, spot, target, discount, bonus, paused, ethReserve, crypt, totalStaked, burned, boughtBack, outstanding, p, tipBps, tipCap,
+        pending, tBps, harvested, toT, toP] = await mcall([
+        E("started"), E("epoch"), E("epochLength"), E("lastSampleAt"), E("sampleCount"), E("spot"), E("target"), E("discountBps"), E("bonusBps"), E("isPaused"),
+        E("ethReserve"), E("crypt"), E("totalStaked"), E("totalBurned"), E("totalBoughtBack"), E("bondedOutstanding"), E("params"), E("TIP_BPS"), E("TIP_CAP"),
+        S("pending"), S("treasuryBps"), S("totalHarvested"), S("totalToTreasury"), S("totalToProtocol"),
       ]);
       params = p; currentBonusBps = Number(bonus);
       const next = Number(lastSampleAt + epochLength) - Math.floor(Date.now() / 1000);
@@ -145,7 +148,6 @@
       $("pokeBtn").disabled = started ? next > 0 : spot === 0n;
       $("bondBtn").disabled = !started || Number(bonus) === 0 || Number(sampleCount) < Number(p.minSamples) || paused;
       $("bondHelp").textContent = !started ? "bonds open once the pool is live." : Number(sampleCount) < Number(p.minSamples) ? `bonds open after ${p.minSamples} samples.` : Number(bonus) === 0 ? "price is at or above target. bonds open when it drops below." : paused ? "new entries are paused." : "";
-      const [pending, tBps, harvested, toT, toP] = await Promise.all([splitterR.pending(), splitterR.treasuryBps(), splitterR.totalHarvested(), splitterR.totalToTreasury(), splitterR.totalToProtocol()]);
       $("pending").textContent = fmtEth(pending);
       $("treasuryBps").textContent = (Number(tBps) / 100).toString();
       $("harvested").textContent = fmtEth(harvested);
@@ -163,7 +165,7 @@
   }
 
   async function refreshUser() {
-    const [bal, st, earned, ids, epoch] = await Promise.all([tokenR.balanceOf(account), engineR.staked(account), engineR.earned(account), engineR.bondIdsOf(account), engineR.epoch()]);
+    const [bal, st, earned, ids, epoch] = await mcall([{ c: tokenR, f: "balanceOf", a: [account] }, { c: engineR, f: "staked", a: [account] }, { c: engineR, f: "earned", a: [account] }, { c: engineR, f: "bondIdsOf", a: [account] }, { c: engineR, f: "epoch" }]);
     $("myStake").textContent = fmtTok(st) + " " + symbol;
     $("myEarned").textContent = fmtEth(earned, 6);
     $("bondMax").dataset.max = ethers.formatUnits(bal, decimals);
@@ -172,9 +174,10 @@
     tbody.innerHTML = "";
     $("myBondsTable").hidden = ids.length === 0;
     if (ids.length === 0) return;
-    const head = await engineR.queueHead();
-    for (const id of [...ids].reverse()) {
-      const b = await engineR.bonds(id);
+    const idList = [...ids].reverse();
+    const [head, ...bondRows] = await mcall([{ c: engineR, f: "queueHead" }, ...idList.map((id) => ({ c: engineR, f: "bonds", a: [id] }))]);
+    for (let k = 0; k < idList.length; k++) {
+      const id = idList[k], b = bondRows[k];
       const matured = epoch >= b.maturityEpoch;
       const status = b.closed ? (id < head ? "paid" : "closed") : matured ? "matured · waiting for crypt" : `matures at epoch ${b.maturityEpoch}`;
       const tr = document.createElement("tr");

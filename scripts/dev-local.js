@@ -44,6 +44,8 @@ window.BOND_CONFIG = Object.assign(window.BOND_CONFIG || {}, {
   chainId: 31337,
   chainName: "Hardhat local",
   rpc: "http://127.0.0.1:8545",
+  rpcs: ["http://127.0.0.1:8545"],
+  multicall: null,
   explorer: "http://127.0.0.1:8545",
   engine: "${await engine.getAddress()}",
   splitter: "${await splitter.getAddress()}",
