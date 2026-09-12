@@ -306,7 +306,7 @@
       $("bondUnit").textContent = symbol; $("stakeUnit").textContent = symbol;
     } catch (e) { console.warn("token meta", e); }
     const treasury = await splitterR.treasury().catch(() => null);
-    $("addrs").innerHTML = [["engine", C.engine], ["splitter", C.splitter], ["token", C.token], ["treasury", treasury]].filter(([, a]) => a)
+    $("addrs").innerHTML = [["engine", C.engine], ["splitter", C.splitter], ["token", C.token], ["snadir", C.snadir], ["treasury", treasury]].filter(([, a]) => a)
       .map(([k, a]) => `${k} <a href="${explorer("address/" + a)}" target="_blank" rel="noopener">${a}</a>`).join("<br>");
     await refresh();
     refreshChart();

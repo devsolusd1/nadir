@@ -16,5 +16,6 @@ window.BOND_CONFIG = {
   token: "0xcce4ee785574d906d53984bab6476cef7e5e033f",
   tokenSymbol: "NADIR",
   x: "https://x.com/Nadir_rh",
+  snadir: "0xDA81978529b894e1b934474850773Fb863b6c94A", // Staked NADIR (liquid staking receipt)
   treasuryBps: 6000,
 };
