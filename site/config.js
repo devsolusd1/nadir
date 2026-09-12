@@ -15,5 +15,6 @@ window.BOND_CONFIG = {
   splitter: "0x0000000000000000000000000000000000000000",
   token: "0x0000000000000000000000000000000000000000",
   tokenSymbol: "TOKEN",
+  x: "https://x.com/Nadir_rh",
   treasuryBps: 6000,
 };

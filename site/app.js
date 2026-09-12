@@ -85,9 +85,12 @@
     $("rain").textContent = A.rain(88, 14);
     $("ground").textContent = A.ground(120);
     const bar = $("abar");
-    [["CONNECT", "#connect", "connectBtn"], ["STAKE", "#stake"], ["BOND", "#bond"], ["DASHBOARD", "#dashboard"], ["NFO", "docs.html"]].forEach(([label, href, id]) => {
+    const items = [["CONNECT", "#connect", "connectBtn"], ["STAKE", "#stake"], ["BOND", "#bond"], ["DASHBOARD", "#dashboard"], ["NFO", "docs.html"]];
+    if (C.x) items.push(["X", C.x, null, true]);
+    items.forEach(([label, href, id, ext]) => {
       const a = document.createElement("a");
       a.className = "abtn"; a.href = href; a.innerHTML = `<pre>${A.button(label)}</pre>`;
+      if (ext) { a.target = "_blank"; a.rel = "noopener"; a.title = href.replace("https://", ""); }
       if (id) { a.id = id; a.onclick = (e) => { e.preventDefault(); connect(); }; }
       bar.appendChild(a);
     });
@@ -292,6 +295,7 @@
 
   (async () => {
     $("chainLabel").textContent = `· ${C.chainName.toLowerCase()} · chain ${C.chainId}`;
+    if (C.x) $("social").innerHTML = `x <a href="${C.x}" target="_blank" rel="noopener">${C.x.replace("https://", "")}</a> · github <a href="https://github.com/devsolusd1/nadir" target="_blank" rel="noopener">github.com/devsolusd1/nadir</a>`;
     if (!(await preflight())) { setInterval(async () => { if (await preflight()) location.reload(); }, 60000); return; }
     try {
       const tokenAddr = await engineR.token();
