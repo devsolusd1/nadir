@@ -13,22 +13,25 @@ Contratos (`contracts/`):
 
 ## Ordem de deploy (mainnet 4663)
 
-1. **Antes do launch** — deploy do splitter apontando pra sua carteira/Safe:
+Tudo é lido do `.env` (copie de `.env.example`). Preencha `DEPLOYER_PK`, `TREASURY` e `RH_RPC` antes do passo 1;
+`TOKEN`, `SPLITTER` e `GUARDIAN` antes do passo 3; `ENGINE` antes do passo 4.
+
+1. **Antes do launch** — FeeSplitter (grava tesouraria + 60% de forma imutável):
    ```bash
-   cp .env.example .env   # DEPLOYER_PK=... (carteira de deploy, nunca commitar)
-   TREASURY=0xSuaCarteiraOuSafe TREASURY_BPS=6000 VERIFY=1 npx hardhat run scripts/1-deploy-splitter.js --network robinhood
+   npx hardhat run scripts/1-deploy-splitter.js --network robinhood
    ```
 2. **Launch na Pons** (site da Pons ou `launchAndBuy` no router `0xe33E…2948`):
-   `creatorFeeRecipient = <FeeSplitter>`, `creatorTaxBps` à sua escolha (teto 1000 = 10%; 200–300 é o sustentável), `pairToken = ETH`.
+   `creatorFeeRecipient = <FeeSplitter do passo 1>`, `creatorTaxBps` à sua escolha (teto 1000 = 10%; 200–300 é o sustentável), `pairToken = ETH`.
    A taxa de criador **não muda depois**; o recipient muda só com timelock de 3 dias.
-3. **Depois do launch** — deploy do engine com o endereço do token e wiring do splitter (uma vez só):
+3. **Depois do launch** — BondEngine com o endereço do token, e wiring do splitter (uma vez só):
    ```bash
-   TOKEN=0xToken GUARDIAN=0xSafe SPLITTER=0xFeeSplitter VERIFY=1 npx hardhat run scripts/2-deploy-engine.js --network robinhood
+   npx hardhat run scripts/2-deploy-engine.js --network robinhood
    ```
 4. **Depois da graduação** (pool v4 vivo) — `start()` e keeper de hora em hora:
    ```bash
-   ENGINE=0xEngine SPLITTER=0xFeeSplitter LOOP=1 npx hardhat run scripts/3-start-and-poke.js --network robinhood
+   npx hardhat run scripts/3-start-and-poke.js --network robinhood
    ```
+   (`LOOP=1` no `.env` pra ele ficar rodando.) Adicione `VERIFY=1` no `.env` pra verificar os contratos no Blockscout logo após o deploy.
 5. Preencher `site/config.js` (endereços + `treasuryBps`) e publicar a pasta `site/` (estático): `index.html` = terminal (arte ASCII gerada em `ascii.js`, botões ASCII, barra de status, prompt, dashboard, bond, stake, manutenção), `docs.html` = NFO/documentação em inglês no mesmo tema. Fonte: stack monoespaçada do sistema com box-drawing (Cascadia/Consolas/Menlo).
 
 Endereços da Pons/Uniswap usados estão em `scripts/addresses.js` (PoolKey confirmada contra o pool do REVENANT:
